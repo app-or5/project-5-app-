@@ -280,13 +280,15 @@ def check_data_quality(plan: pd.DataFrame, valid_locations: set) -> ValidationRe
 def check_travel_time(plan: pd.DataFrame, dmatrix: pd.DataFrame) -> ValidationResult:
     """Checks if travel time is shorter than minimum required (tau_br < tau_min_br)."""
     vr = ValidationResult()                     # create an empty validationresult object where all errors and warning can be stored
-    for idx, row in plan.iterrows():                        # go through every line in the bus plan
+    for idx, row in plan.iterrows(): 
+        # go through every line in the bus plan 
+        if pd.isna(row["start location"]) or pd.isna(row["end location"]):
+            continue
         if row["activity"] not in {"service trip", "material trip"}:          # Checks if the bus is traveling to another location if not skip this part
             continue
         if row["start location"] == row["end location"]:                      # Checks if the bus is traveling to another location if not skip this part
             continue
-        if pd.isna(row["start location"]) or pd.isna(row["end location"]):
-            continue
+
         subset = dmatrix[(dmatrix["start"] == row["start location"]) &                        # Search the distance matrix for rows that match both: The start and end location of the activity.
                           (dmatrix["end"] == row["end location"])]
         if row.get("line") is not None and not pd.isna(row.get("line")) and (subset["line"] == row["line"]).any():    # Check if the activity has a line number and if this line number can be found in the distance matrix
