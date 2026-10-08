@@ -23,12 +23,6 @@ class Config:
     min_charging_minutes: float = 15.0           # minimal charging minutes (so 15 minutes)
     idle_power_kw: float = 5.0                   # consumption while doing nothing
     depot_location: str = "ehvgar"               # Location of depot
-
-    @property
-    def battery_kwh(self) -> float:
-        """Alias for usable_battery_capacity_kwh, kept so older code that
-        still refers to battery_kwh keeps working."""
-        return self.usable_battery_capacity_kwh
     
     @property
     def usable_battery_capacity_kwh(self) -> float:
@@ -43,7 +37,7 @@ class Config:
     @property
     def max_daily_soc_kwh(self) -> float:
         """The daily kwh you can charge"""
-        return self.battery_kwh * self.soc_max_charge_fraction
+        return self.usable_battery_capacity_kwh * self.soc_max_charge_fraction
 
 
 DEFAULT_CONFIG = Config()
@@ -475,9 +469,6 @@ def compute_kpis(plan_with_soc: pd.DataFrame, config: Config = DEFAULT_CONFIG,) 
         "buses_below_margin": buses_below_margin,
     }
     
-# ----------------------------------------------------------------------------
-# Full pipeline
-# ----------------------------------------------------------------------------
 
 def run_full_check(bus_planning_path: str, distance_matrix_path: str, timetable_path: str, config: Config = DEFAULT_CONFIG,) -> dict:
     """ Run the complete bus plan validation and KPI calculation process. """

@@ -67,18 +67,14 @@ except Exception as e:
 
 valid_locations = set(dmatrix["start"]) | set(dmatrix["end"]) | {config.depot_location}
 
-# ----------------------------------------------------------------------------
 # Run checks
-# ----------------------------------------------------------------------------
 plan_soc = simulate_soc(plan_raw, config)
 all_issues_result = run_all_feasibility_checks(plan_soc, dmatrix, timetable, valid_locations, config)
 n_errors = len(all_issues_result.errors)
 n_warnings = len(all_issues_result.warnings)
 kpis = compute_kpis(plan_soc, config)
 
-# ----------------------------------------------------------------------------
 # Tabs
-# ----------------------------------------------------------------------------
 tab_overview, tab_feasibility, tab_gantt, tab_soc, tab_kpi = st.tabs(
     ["Overview", "Feasibility checks", "Gantt chart", "SOC chart", "KPIs"]
 )
