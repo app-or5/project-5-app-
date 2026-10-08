@@ -46,6 +46,7 @@ with st.sidebar:
     )
 
     st.divider()
+    
     st.caption(
         f"SOC_max (usable capacity): **{config.usable_battery_capacity_kwh:.1f} kWh**  \n"
         f"SOC_min (safety margin): **{config.min_soc_kwh:.1f} kWh**  \n"

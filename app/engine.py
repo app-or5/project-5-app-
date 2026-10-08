@@ -6,11 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, time
 from typing import Optional
 
-
-# ----------------------------------------------------------------------------
 # Configuration / parameter assumptions (see "Parameter assumptions" block in the
 # KPI and Feasibility Definitions document)
-# ----------------------------------------------------------------------------
 
 @dataclass
 class Config:
@@ -24,6 +21,7 @@ class Config:
     idle_power_kw: float = 5.0                   # consumption while doing nothing
     depot_location: str = "ehvgar"               # Location of depot
     
+    # some functions to make 3 variables, pretty self-explanatory.
     @property
     def usable_battery_capacity_kwh(self) -> float:
         """Returns the usable battery capacity after accounting for SOH."""
@@ -151,7 +149,6 @@ def load_bus_planning(path: str) -> pd.DataFrame:
 def load_distance_matrix(path: str) -> pd.DataFrame:
     """
     Load the distance matrix from an Excel file.
-     
     The function also cleans the column names so they can be used
     consistently throughout the engine.
     """
@@ -163,7 +160,6 @@ def load_distance_matrix(path: str) -> pd.DataFrame:
 def load_timetable(path: str) -> pd.DataFrame:
     """
     Load the timetable from an Excel file and prepare the data.
-     
     The function first cleans the column names. Converts departure times to minutes since midnight.
     And lastly sorts the timetable by line and departure time.
     """
@@ -173,10 +169,7 @@ def load_timetable(path: str) -> pd.DataFrame:
     return df.sort_values(["line", "departure_min"]).reset_index(drop=True)
 
 
-# ----------------------------------------------------------------------------
 # Validation issue container
-# ----------------------------------------------------------------------------
-
 @dataclass
 class Issue:
     severity: str                        # error or warning
@@ -218,10 +211,7 @@ class ValidationResult:
             "bus": i.bus, "row": i.row_index, "message": i.message
         } for i in self.issues])
 
-# ----------------------------------------------------------------------------
-# Feasibility checks - section 3.3 of the KPI and Feasibility Definitions document
-# ----------------------------------------------------------------------------
-
+# Feasibility checks
 def check_data_quality(plan: pd.DataFrame, valid_locations: set) -> ValidationResult:
     """Checks the time logic and data quality of the bus plan."""
     vr = ValidationResult()                       # create an empty validationresult object where all errors and warning can be stored
@@ -302,7 +292,6 @@ def check_travel_time(plan: pd.DataFrame, dmatrix: pd.DataFrame) -> ValidationRe
 def simulate_soc(plan: pd.DataFrame, config: Config = DEFAULT_CONFIG) -> pd.DataFrame:
     """
     Simulate the battery SOC for every bus.
-
     Positive energy consumption lowers the SOC.
     Negative energy consumption increases the SOC.
     """
