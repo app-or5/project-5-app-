@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
-import sys
+#import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+#add the folder 2 steps above this file to sys.path
+#sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.engine import (
     load_bus_planning, load_distance_matrix, load_timetable,
@@ -20,9 +21,6 @@ def kleine_kpi(col, label, waarde):
     col.caption(label)
     col.markdown(f"##### {waarde}")
 
-# ----------------------------------------------------------------------------
-# Sidebar: inputs and assumptions
-# ----------------------------------------------------------------------------
 with st.sidebar:
     st.header("1. Input data")
     bp_file = st.file_uploader("Bus plan (.xlsx)", type=["xlsx"], key="bp")

@@ -312,21 +312,21 @@ def simulate_soc(plan: pd.DataFrame, config: Config = DEFAULT_CONFIG) -> pd.Data
     Positive energy consumption lowers the SOC.
     Negative energy consumption increases the SOC.
     """
-    plan = plan.copy()            # make a copy of the database this prevents the original from being changed
-    plan["soc_start_kwh"] = np.nan            # Create a new column for the SOC at the start of each activity
-    plan["soc_end_kwh"] = np.nan              # Create a new column for the SOC at the end of each activity, they will both be empty because we haven't calculated the SOC yet
-    bus_groups = plan.groupby("bus").groups             # Groups de row index by bus numbers
-    for bus, indexes in bus_groups.items():                # Go through every bus and the indexes of its activities
+    plan = plan.copy()                         # make a copy of the database this prevents the original from being changed
+    plan["soc_start_kwh"] = np.nan             # Create a new column for the SOC at the start of each activity
+    plan["soc_end_kwh"] = np.nan               # Create a new column for the SOC at the end of each activity, they will both be empty because we haven't calculated the SOC yet
+    bus_groups = plan.groupby("bus").groups    # Groups de row index by bus numbers
+    for bus, indexes in bus_groups.items():    # Go through every bus and the indexes of its activities
         sorted_indexes = sorted(indexes, key=lambda index: plan.loc[index, "start_min"],)            # sort the activity indexes by their starting time 
-        soc = config.max_daily_soc_kwh                # assuming that every bus starts with the maximum SOC
-        for index in sorted_indexes:                # go through all the activities of the current bus
-            plan.at[index, "soc_start_kwh"] = soc                # store the current SOC as the SOC at the start of the activity 
-            energy = plan.at[index, "energy consumption"]            # get the energy consumption of the current activity
+        soc = config.max_daily_soc_kwh                          # assuming that every bus starts with the maximum SOC
+        for index in sorted_indexes:                            # go through all the activities of the current bus
+            plan.at[index, "soc_start_kwh"] = soc               # store the current SOC as the SOC at the start of the activity 
+            energy = plan.at[index, "energy consumption"]       # get the energy consumption of the current activity
             if pd.isna(energy):       # check whether the energy consumption is missing if so the end SOC can't be calculated so skip the rest of this activity
                 plan.at[index, "soc_end_kwh"] = np.nan
                 continue
-            soc = soc - float(energy)            # calculate the new SOC after the activity
-            plan.at[index, "soc_end_kwh"] = soc                # store the calculated SOC as the new SOC at the end of the activity
+            soc = soc - float(energy)                       # calculate the new SOC after the activity
+            plan.at[index, "soc_end_kwh"] = soc             # store the calculated SOC as the new SOC at the end of the activity
     return plan                # Return the bus plan with the calculated SOC columns
 
     
@@ -422,10 +422,8 @@ def run_all_feasibility_checks(plan_with_soc: pd.DataFrame, dmatrix: pd.DataFram
     return ValidationResult(issues=all_issues)                # Create and return one Validationresult containing all errors and warnings found by the checks above
 
 
-# ----------------------------------------------------------------------------
-# KPI computation - section 3.2 of the KPI and Feasibility Definitions document
-# ----------------------------------------------------------------------------
 
+# KPI computation - section 3.2 of the KPI and Feasibility Definitions document
 def compute_kpis(plan_with_soc: pd.DataFrame, config: Config = DEFAULT_CONFIG,) -> dict:
     """Compute the 12 defined KPIs."""
     buses = plan_with_soc["bus"].dropna().unique()                # Select all unique busses used in the full bus plan
