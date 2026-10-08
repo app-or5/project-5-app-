@@ -1,10 +1,6 @@
 import streamlit as st
 import pandas as pd
-#import sys
 import os
-
-#add the folder 2 steps above this file to sys.path
-#sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine import (
     load_bus_planning, load_distance_matrix, load_timetable,
@@ -21,6 +17,7 @@ def kleine_kpi(col, label, waarde):
     col.caption(label)
     col.markdown(f"##### {waarde}")
 
+# set sidebar variables to adjust
 with st.sidebar:
     st.header("1. Input data")
     bp_file = st.file_uploader("Bus plan (.xlsx)", type=["xlsx"], key="bp")
@@ -54,9 +51,6 @@ with st.sidebar:
         f"SOC_min (safety margin): **{config.min_soc_kwh:.1f} kWh**  \n"
         f"Max daily charge level: **{config.max_daily_soc_kwh:.1f} kWh**"
     )
-
-#load data
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 bp_source = bp_file
 dm_source = dm_file
