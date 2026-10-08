@@ -52,19 +52,15 @@ with st.sidebar:
         f"Max daily charge level: **{config.max_daily_soc_kwh:.1f} kWh**"
     )
 
-bp_source = bp_file
-dm_source = dm_file
-tt_source = tt_file
-
 # don't do anything if the files have not been loaded yet.
-if not (bp_source and dm_source and tt_source):
+if not (bp_file and dm_file and tt_file):
     st.info("Upload the bus plan, distance matrix, and timetable in the sidebar to begin.")
     st.stop()
 
 try:
-    plan_raw = load_bus_planning(bp_source)
-    dmatrix = load_distance_matrix(dm_source)
-    timetable = load_timetable(tt_source)
+    plan_raw = load_bus_planning(bp_file)
+    dmatrix = load_distance_matrix(dm_file)
+    timetable = load_timetable(tt_file)
 except Exception as e:
     st.error(f"Failed to load input files: {e}")
     st.stop()
