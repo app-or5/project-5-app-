@@ -9,6 +9,8 @@ from typing import Optional
 # Configuration / parameter assumptions (see "Parameter assumptions" block in the
 # KPI and Feasibility Definitions document)
 
+margin = 1e-6
+
 @dataclass
 class Config:
     battery_capacity_kwh: float = 300.0          # Total battery capacity (300kwh)
@@ -252,7 +254,7 @@ def check_data_quality(plan: pd.DataFrame, valid_locations: set) -> ValidationRe
                        bus, nxt["index"],
                        f"Location mismatch: bus {bus} ends route at '{cur['end location']}' "
                        f"but next route starts at '{nxt['start location']}'.")
-            if nxt["start_min"] < cur["end_min_adj"] - 1e-6:               # Checks if the end time of the current activity is bigger as the start time of the next activity
+            if nxt["start_min"] < cur["end_min_adj"] - margin:               # Checks if the end time of the current activity is bigger as the start time of the next activity
                 vr.add("error", "data_quality",
                        "4. Overlapping activities (a bus cannot be in two places at once)",
                        bus, nxt["index"],
@@ -280,7 +282,7 @@ def check_travel_time(plan: pd.DataFrame, dmatrix: pd.DataFrame) -> ValidationRe
         if subset.empty:            # Checks if the distance matrix contains no matching routes
             continue              # already flagged by check_data_quality as unknown location
         min_travel_time = float(subset.iloc[0]["min_travel_time"])                    # Select minimum required travel time
-        if row["duration_min"] < min_travel_time - 1e-6:                # Checks if minimum duration is smaller as the minimum required travel time and gives an error if this is the case
+        if row["duration_min"] < min_travel_time - margin:                # Checks if minimum duration is smaller as the minimum required travel time and gives an error if this is the case
             vr.add("error", "feasibility", "6. Travel time shorter than minimum required",
                    row["bus"], idx,
                    f"Scheduled travel time is {row['duration_min']:.1f} min, "
@@ -326,7 +328,7 @@ def check_soc_feasibility(plan_with_soc: pd.DataFrame, config: Config = DEFAULT_
                 "energy data is missing.",
             )
             continue                # Skip the remaining SOC checks for this row
-        if row["soc_end_kwh"] < config.min_soc_kwh - 1e-6:                    # Checks if the SOC at the end of a activity is below the minimum SOC
+        if row["soc_end_kwh"] < config.min_soc_kwh - margin:                    # Checks if the SOC at the end of a activity is below the minimum SOC
             vr.add("error", "feasibility", "1. SOC below safety margin", row["bus"], idx,
                 (
                     f"SOC drops to {row['soc_end_kwh']:.1f} kWh, "
@@ -334,7 +336,7 @@ def check_soc_feasibility(plan_with_soc: pd.DataFrame, config: Config = DEFAULT_
                     f"{config.min_soc_kwh:.1f} kWh."
                 ),
             )
-        if (row["soc_end_kwh"] > config.usable_battery_capacity_kwh + 1e-6):            # Checks that the SOC at the end of a trip is bigger as the SOH and if so gives an error as output
+        if (row["soc_end_kwh"] > config.usable_battery_capacity_kwh + margin):            # Checks that the SOC at the end of a trip is bigger as the SOH and if so gives an error as output
             vr.add("error", "feasibility", "2. SOC exceeding physical battery capacity", row["bus"], idx,
                 (
                     f"SOC increases to {row['soc_end_kwh']:.1f} kWh, "
