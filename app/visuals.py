@@ -77,7 +77,7 @@ def build_soc_chart(plan_with_soc: pd.DataFrame, config, bus_filter=None) -> go.
 
     fig.add_hline(y=config.min_soc_kwh, line_dash="dash", line_color="red",
                    annotation_text="SOC_min (safety margin)")
-    fig.add_hline(y=config.battery_kwh, line_dash="dot", line_color="grey",
+    fig.add_hline(y=config.usable_battery_capacity_kwh, line_dash="dot", line_color="grey",
                    annotation_text="SOC_max (usable capacity)")
 
     fig.update_layout(
