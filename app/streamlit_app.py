@@ -6,12 +6,12 @@ import os
 #add the folder 2 steps above this file to sys.path
 #sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.engine import (
+from engine import (
     load_bus_planning, load_distance_matrix, load_timetable,
     simulate_soc, run_all_feasibility_checks, compute_kpis,
     Config, DEFAULT_CONFIG,
 )
-from app.visuals import build_gantt, build_soc_chart
+from visuals import build_gantt, build_soc_chart
 
 st.set_page_config(page_title="E-Bus Planning Checker", layout="wide")
 
@@ -55,15 +55,14 @@ with st.sidebar:
         f"Max daily charge level: **{config.max_daily_soc_kwh:.1f} kWh**"
     )
 
-# ----------------------------------------------------------------------------
-# Load data
-# ----------------------------------------------------------------------------
+#load data
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 bp_source = bp_file
 dm_source = dm_file
 tt_source = tt_file
 
+# don't do anything if the files have not been loaded yet.
 if not (bp_source and dm_source and tt_source):
     st.info("Upload the bus plan, distance matrix, and timetable in the sidebar to begin.")
     st.stop()
