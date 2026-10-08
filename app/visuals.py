@@ -1,11 +1,9 @@
-"""Plotly-based visualisations for the bus plan: Gantt chart and SOC-over-time chart."""
-
 import plotly.graph_objects as go
 import pandas as pd
 
 ACTIVITY_COLORS = {
     "service trip": "#2563eb",   # blue
-    "material trip": "#f59e0b",  # amber
+    "material trip": "#f59e0b",  # orange
     "charging": "#16a34a",       # green
     "idle": "#9ca3af",           # grey
 }
