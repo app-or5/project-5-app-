@@ -22,6 +22,10 @@ class Config:
     min_charging_minutes: float = 15.0           # minimal charging minutes (so 15 minutes)
     idle_power_kw: float = 5.0                   # consumption while doing nothing
     depot_location: str = "ehvgar"               # Location of depot
+    hub_location: str = "ehvbst"                 # Return trips to the depot always go via this location
+    energy_per_km_kwh: float = 1.2               # Energy consumption of a driving bus (1.2 kWh per km)
+    waiting_cost_kwh: float = 5.0                # Cost of one waiting period (planner pseudocode: "wachttijd kost 5 kWh")
+    charge_trigger_trips: int = 2                # Bus goes charging when SOC < safety margin + this many service trips
     
     # some functions to make 3 variables, pretty self-explanatory.
     @property
@@ -279,6 +283,8 @@ def check_travel_time(plan: pd.DataFrame, dmatrix: pd.DataFrame) -> ValidationRe
                           (dmatrix["end"] == row["end location"])]
         if row.get("line") is not None and not pd.isna(row.get("line")) and (subset["line"] == row["line"]).any():    # Check if the activity has a line number and if this line number can be found in the distance matrix
             subset = subset[subset["line"] == row["line"]]            # Only keep the distance matrix row for the correct line
+        elif subset["line"].isna().any():                             # Trip without line number (material trip): use the matrix row without line,
+            subset = subset[subset["line"].isna()]                    # otherwise it is compared with the minimum of line 400
         if subset.empty:            # Checks if the distance matrix contains no matching routes
             continue              # already flagged by check_data_quality as unknown location
         min_travel_time = float(subset.iloc[0]["min_travel_time"])                    # Select minimum required travel time
@@ -487,3 +493,181 @@ def run_full_check(bus_planning_path: str, distance_matrix_path: str, timetable_
         "kpis": kpis,
         "config": config,
     }
+
+
+# ----------------------------------------------------------------------------
+# Planning maker - implements the "Pseudocode planning" (steps 0 - 5)
+# ----------------------------------------------------------------------------
+
+DAY_START_MIN = 4 * 60      # Step 0: times before 04:00 belong to the same service day, so they get +24 h
+
+
+def shift_after_midnight(minutes: float) -> float:
+    """Step 0: times before 04:00 get 24 hours added."""
+    return minutes + 24 * 60 if minutes < DAY_START_MIN else minutes
+
+
+def shifted_timetable(timetable: pd.DataFrame) -> pd.DataFrame:
+    """Copy of the timetable whose departure_min follows the 04:00 rule (used to check a generated plan)."""
+    tt = timetable.copy()
+    tt["departure_min"] = tt["departure_min"].apply(shift_after_midnight)
+    return tt
+
+
+def _minutes_to_hhmmss(m: float) -> str:
+    m = int(round(m)) % (24 * 60)
+    return f"{m // 60:02d}:{m % 60:02d}:00"
+
+
+@dataclass
+class _PlannedBus:
+    """State of one bus during planning: where it is, from when it is free, and its SOC at that moment."""
+    number: int
+    location: str
+    free_min: float
+    soc_kwh: float
+
+
+def _leg_lookup(dmatrix: pd.DataFrame) -> dict:
+    """(start, end, line) -> (travel time in minutes, distance in metres). Line is None for material trips."""
+    legs = {}
+    for _, r in dmatrix.iterrows():
+        line = None if pd.isna(r["line"]) else int(r["line"])
+        # Step 0: the maximum travel time is used as the duration of a trip
+        legs[(r["start"], r["end"], line)] = (float(r["max_travel_time"]), float(r["distance_m"]))
+    return legs
+
+
+def generate_bus_planning(timetable: pd.DataFrame, dmatrix: pd.DataFrame,
+                          config: Config = DEFAULT_CONFIG) -> pd.DataFrame:
+    """
+    Build a bus planning from the timetable, following the pseudocode.
+
+    Returns a DataFrame in the same format as load_bus_planning() (so the checks, KPIs and charts
+    can use it directly). Start/end minutes follow the 04:00 rule (e.g. 00:10 is 1450); the
+    "start time"/"end time" text columns show the normal clock time.
+    """
+    cfg = config
+    legs = _leg_lookup(dmatrix)
+    garage, hub = cfg.depot_location, cfg.hub_location
+    charge_per_min = cfg.charge_rate_fast_kw / 60.0          # 450 kW = 7.5 kWh per minute
+
+    def leg(start, end, line=None):
+        try:
+            minutes, dist_m = legs[(start, end, line)]
+        except KeyError:
+            raise ValueError(f"No travel time/distance in the distance matrix for {start} -> {end} (line {line}).")
+        return minutes, dist_m / 1000.0 * cfg.energy_per_km_kwh
+
+    def path_to_garage(loc):
+        """Way back to the garage always goes via the hub (ehvbst)."""
+        if loc == garage:
+            return []
+        if loc == hub:
+            return [(hub, garage)]
+        return [(loc, hub), (hub, garage)]
+
+    def return_energy(loc):
+        return sum(leg(a, b)[1] for a, b in path_to_garage(loc))
+
+    rows = []
+
+    def add_row(bus, start, end, start_min, end_min, activity, line, energy):
+        rows.append({
+            "start location": start, "end location": end,
+            "start time": _minutes_to_hhmmss(start_min), "end time": _minutes_to_hhmmss(end_min),
+            "activity": activity, "line": line, "energy consumption": energy, "bus": bus,
+            "start_min": start_min, "end_min": end_min, "end_min_adj": end_min,
+            "duration_min": end_min - start_min,
+        })
+
+    # ---- Step 0: preparation -------------------------------------------------
+    trips = timetable.copy()
+    trips["dep"] = trips["departure_min"].apply(shift_after_midnight)
+    trips = trips.sort_values(["dep", "line"]).reset_index(drop=True)
+    max_service_energy = max(leg(t.start, t.end, int(t.line))[1] for t in trips.itertuples())
+    charge_trigger_kwh = cfg.min_soc_kwh + cfg.charge_trigger_trips * max_service_energy
+
+    buses: list[_PlannedBus] = []                    # begin without buses
+
+    for trip in trips.itertuples():
+        s, e, line, dep = trip.start, trip.end, int(trip.line), float(trip.dep)
+        trip_min, trip_kwh = leg(s, e, line)
+
+        # ---- Step 1 + 2: which existing buses can drive this trip? ------------
+        best, best_key = None, None
+        for bus in buses:
+            if bus.location == s:                        # option A: bus is already at the start stop
+                option, arrive, mat_kwh = 0, bus.free_min, 0.0
+            else:                                         # option B: bus is elsewhere, needs a material trip
+                if (bus.location, s, None) not in legs:
+                    continue
+                mat_min, mat_kwh = leg(bus.location, s)
+                option, arrive = 1, bus.free_min + mat_min
+            if arrive > dep:                              # not on time
+                continue
+            wait = dep - arrive
+            used = mat_kwh + (cfg.waiting_cost_kwh if wait > 0 else 0.0) + trip_kwh
+            soc_after = bus.soc_kwh - used
+            # after the trip there must still be enough energy to reach the garage
+            if soc_after - return_energy(e) < cfg.min_soc_kwh - margin:
+                continue
+            # ---- Step 3: option A before B, smallest wait (best fit), then lowest SOC
+            key = (option, wait, bus.soc_kwh)
+            if best_key is None or key < best_key:
+                best, best_key = bus, key
+
+        if best is not None:
+            bus = best
+            if bus.location != s:
+                mat_min, mat_kwh = leg(bus.location, s)
+                add_row(bus.number, bus.location, s, bus.free_min, bus.free_min + mat_min,
+                        "material trip", np.nan, mat_kwh)
+                bus.soc_kwh -= mat_kwh
+                bus.free_min += mat_min
+                bus.location = s
+            if dep > bus.free_min:
+                add_row(bus.number, s, s, bus.free_min, dep, "idle", np.nan, cfg.waiting_cost_kwh)
+                bus.soc_kwh -= cfg.waiting_cost_kwh
+        else:
+            # ---- Step 2, option 3: take a new bus out of the garage ------------
+            mat_min, mat_kwh = leg(garage, s)            # garage -> ehvapt directly is allowed
+            bus = _PlannedBus(len(buses) + 1, s, dep, cfg.max_daily_soc_kwh)
+            buses.append(bus)
+            add_row(bus.number, garage, s, dep - mat_min, dep, "material trip", np.nan, mat_kwh)
+            bus.soc_kwh -= mat_kwh
+
+        add_row(bus.number, s, e, dep, dep + trip_min, "service trip", line, trip_kwh)
+        bus.soc_kwh -= trip_kwh
+        bus.free_min = dep + trip_min
+        bus.location = e
+
+        # ---- Step 4: arrival at ehvbst -> is the battery too low? -> charge ---
+        if e == hub and bus.soc_kwh < charge_trigger_kwh:
+            to_garage_min, to_garage_kwh = leg(hub, garage)
+            add_row(bus.number, hub, garage, bus.free_min, bus.free_min + to_garage_min,
+                    "material trip", np.nan, to_garage_kwh)
+            bus.soc_kwh -= to_garage_kwh
+            bus.free_min += to_garage_min
+            needed = cfg.max_daily_soc_kwh - bus.soc_kwh
+            charge_min = max(float(np.ceil(needed / charge_per_min - 1e-9)), cfg.min_charging_minutes)
+            add_row(bus.number, garage, garage, bus.free_min, bus.free_min + charge_min,
+                    "charging", np.nan, -needed)
+            bus.soc_kwh = cfg.max_daily_soc_kwh
+            bus.free_min += charge_min
+            bus.location = garage                        # available again (option B) once fully charged
+
+    # ---- Step 5: closing - every bus goes back to the garage -----------------
+    for bus in buses:
+        for a, b in path_to_garage(bus.location):
+            minutes, kwh = leg(a, b)
+            add_row(bus.number, a, b, bus.free_min, bus.free_min + minutes, "material trip", np.nan, kwh)
+            bus.soc_kwh -= kwh
+            bus.free_min += minutes
+            bus.location = b
+
+    plan = pd.DataFrame(rows)
+    plan["start location"] = plan["start location"].astype("string")
+    plan["end location"] = plan["end location"].astype("string")
+    plan["activity"] = plan["activity"].astype("string")
+    return plan.sort_values(["bus", "start_min"]).reset_index(drop=True)

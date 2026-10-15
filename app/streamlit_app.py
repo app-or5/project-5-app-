@@ -1,10 +1,12 @@
 import streamlit as st
 import pandas as pd
+import io
 import os
 
 from engine import (
     load_bus_planning, load_distance_matrix, load_timetable,
     simulate_soc, run_all_feasibility_checks, compute_kpis,
+    generate_bus_planning, shifted_timetable,
     Config, DEFAULT_CONFIG,
 )
 from visuals import build_gantt, build_soc_chart
@@ -191,5 +193,54 @@ with tab_kpi:
     
 with tab_planner:
     st.subheader("Create Planning")
+    st.markdown(
+        "Builds a bus planning from the uploaded timetable and distance matrix. "
+        "Trips are handled in order of departure time. For every trip the best existing bus is chosen "
+        "(already at the start stop first, then smallest waiting time, then lowest SOC); "
+        "a new bus is only taken from the garage when no existing bus can do it. "
+        "Buses with a low battery go to the garage at ehvbst to charge, and every bus returns to the garage at the end."
+    )
+
+    if st.button("Create planning", type="primary"):
+        try:
+            st.session_state["generated_plan"] = generate_bus_planning(timetable, dmatrix, config)
+        except Exception as e:
+            st.session_state.pop("generated_plan", None)
+            st.error(f"Could not create a planning: {e}")
+
+    generated = st.session_state.get("generated_plan")
+    if generated is not None:
+        gen_soc = simulate_soc(generated, config)
+        gen_result = run_all_feasibility_checks(gen_soc, dmatrix, shifted_timetable(timetable),
+                                                valid_locations, config)
+        gen_kpis = compute_kpis(gen_soc, config)
+        gen_errors = len(gen_result.errors)
+
+        if gen_errors == 0:
+            st.success("The created planning passes all feasibility checks.")
+        else:
+            st.error(f"The created planning has {gen_errors} feasibility violation(s).")
+            st.dataframe(gen_result.to_dataframe(), use_container_width=True)
+
+        g1, g2, g3, g4 = st.columns(4)
+        g1.metric("Buses used", gen_kpis["n_buses"])
+        g2.metric("Deadhead ratio", f"{gen_kpis['deadhead_ratio']:.2f}")
+        g3.metric("Productive time ratio", f"{gen_kpis['productive_time_ratio']:.1%}")
+        g4.metric("Charging sessions", gen_kpis["n_charging_sessions"])
+
+        st.plotly_chart(build_gantt(gen_soc, title="Created planning - Gantt chart"),
+                        use_container_width=True)
+        st.plotly_chart(build_soc_chart(gen_soc, config), use_container_width=True)
+
+        export_columns = ["start location", "end location", "start time", "end time",
+                          "activity", "line", "energy consumption", "bus"]
+        export_df = generated[export_columns]
+        st.dataframe(export_df, use_container_width=True, height=400)
+
+        buffer = io.BytesIO()
+        export_df.to_excel(buffer, index=False)
+        st.download_button("Download planning (.xlsx)", buffer.getvalue(),
+                           file_name="Generated_Bus_Planning.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 st.divider()
