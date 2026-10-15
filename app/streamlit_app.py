@@ -188,5 +188,8 @@ with tab_kpi:
         "12. **Lowest SOC reached** - minimize SOC across all buses and routes\n"
 
     )
+    
+with tab_planner:
+    st.subheader("Create Planning")
 
 st.divider()
