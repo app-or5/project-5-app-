@@ -586,6 +586,7 @@ def generate_bus_planning(timetable: pd.DataFrame, dmatrix: pd.DataFrame,
     trips["dep"] = trips["departure_min"].apply(shift_after_midnight)
     trips = trips.sort_values(["dep", "line"]).reset_index(drop=True)
     max_service_energy = max(leg(t.start, t.end, int(t.line))[1] for t in trips.itertuples())
+    last_departure = float(trips["dep"].max())
     charge_trigger_kwh = cfg.min_soc_kwh + cfg.charge_trigger_trips * max_service_energy
 
     buses: list[_PlannedBus] = []                    # begin without buses
@@ -642,20 +643,24 @@ def generate_bus_planning(timetable: pd.DataFrame, dmatrix: pd.DataFrame,
         bus.free_min = dep + trip_min
         bus.location = e
 
-        # ---- Step 4: arrival at ehvbst -> is the battery too low? -> charge ---
-        if e == hub and bus.soc_kwh < charge_trigger_kwh:
-            to_garage_min, to_garage_kwh = leg(hub, garage)
-            add_row(bus.number, hub, garage, bus.free_min, bus.free_min + to_garage_min,
-                    "material trip", np.nan, to_garage_kwh)
-            bus.soc_kwh -= to_garage_kwh
-            bus.free_min += to_garage_min
-            needed = cfg.max_daily_soc_kwh - bus.soc_kwh
+        # ---- Step 4: battery too low? -> go to the garage (always via ehvbst) and charge ----
+        # Checked after every trip (also at ehvapt, otherwise such a bus would be stuck with a low battery).
+        if bus.soc_kwh < charge_trigger_kwh:
+            drive_min = sum(leg(a, b)[0] for a, b in path_to_garage(bus.location))
+            drive_kwh = return_energy(bus.location)
+            needed = cfg.max_daily_soc_kwh - (bus.soc_kwh - drive_kwh)
             charge_min = max(float(np.ceil(needed / charge_per_min - 1e-9)), cfg.min_charging_minutes)
-            add_row(bus.number, garage, garage, bus.free_min, bus.free_min + charge_min,
-                    "charging", np.nan, -needed)
-            bus.soc_kwh = cfg.max_daily_soc_kwh
-            bus.free_min += charge_min
-            bus.location = garage                        # available again (option B) once fully charged
+            charged_at = bus.free_min + drive_min + charge_min
+            if charged_at <= last_departure:             # only charge if the bus can still be used afterwards
+                for a, b in path_to_garage(bus.location):
+                    minutes, kwh = leg(a, b)
+                    add_row(bus.number, a, b, bus.free_min, bus.free_min + minutes, "material trip", np.nan, kwh)
+                    bus.free_min += minutes
+                bus.soc_kwh -= drive_kwh
+                add_row(bus.number, garage, garage, bus.free_min, charged_at, "charging", np.nan, -needed)
+                bus.soc_kwh = cfg.max_daily_soc_kwh
+                bus.free_min = charged_at
+                bus.location = garage                    # available again (option B) once fully charged
 
     # ---- Step 5: closing - every bus goes back to the garage -----------------
     for bus in buses:
