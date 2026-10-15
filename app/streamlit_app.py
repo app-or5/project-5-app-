@@ -77,7 +77,7 @@ kpis = compute_kpis(plan_soc, config)
 
 # Tabs
 tab_overview, tab_feasibility, tab_gantt, tab_soc, tab_kpi = st.tabs(
-    ["Overview", "Feasibility checks", "Gantt chart", "SOC chart", "KPIs"]
+    ["Overview", "Feasibility checks", "Gantt chart", "SOC chart", "KPIs", "Planning maker"]
 )
 
 with tab_overview:
