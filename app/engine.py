@@ -9,7 +9,7 @@ from typing import Optional
 # Configuration / parameter assumptions (see "Parameter assumptions" block in the
 # KPI and Feasibility Definitions document)
 
-margin = 1e-6
+margin = 1e-6 #not 100% sure if it works, not tested!!!!
 
 @dataclass
 class Config:
