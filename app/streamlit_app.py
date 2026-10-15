@@ -76,7 +76,7 @@ n_warnings = len(all_issues_result.warnings)
 kpis = compute_kpis(plan_soc, config)
 
 # Tabs
-tab_overview, tab_feasibility, tab_gantt, tab_soc, tab_kpi = st.tabs(
+tab_overview, tab_feasibility, tab_gantt, tab_soc, tab_kpi, tab_planner = st.tabs(
     ["Overview", "Feasibility checks", "Gantt chart", "SOC chart", "KPIs", "Planning maker"]
 )
 
