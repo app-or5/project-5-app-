@@ -25,9 +25,12 @@ class Config:
     hub_location: str = "ehvbst"                 # Return trips to the depot always go via this location
     energy_per_km_kwh: float = 1.2               # Energy consumption of a driving bus (1.2 kWh per km)
     waiting_cost_kwh: float = 5.0                # Cost of one waiting period (planner pseudocode: "wachttijd kost 5 kWh")
+    # waiting_cost_kwh is depricated, niet gebruiken!
     charge_trigger_trips: int = 2                # Bus goes charging when SOC < safety margin + this many service trips
     
     # some functions to make 3 variables, pretty self-explanatory.
+    # @property decorater lets us access properties of an object without creating
+    # the object 
     @property
     def usable_battery_capacity_kwh(self) -> float:
         """Returns the usable battery capacity after accounting for SOH."""
@@ -45,11 +48,6 @@ class Config:
 
 
 DEFAULT_CONFIG = Config()
-
-
-# ----------------------------------------------------------------------------
-# Data loading
-# ----------------------------------------------------------------------------
 
 def _parse_time_to_minutes(t) -> float:
     """
@@ -494,11 +492,6 @@ def run_full_check(bus_planning_path: str, distance_matrix_path: str, timetable_
         "config": config,
     }
 
-
-# ----------------------------------------------------------------------------
-# Planning maker - implements the "Pseudocode planning" (steps 0 - 5)
-# ----------------------------------------------------------------------------
-
 DAY_START_MIN = 4 * 60      # Step 0: times before 04:00 belong to the same service day, so they get +24 h
 
 
@@ -608,7 +601,7 @@ def generate_bus_planning(timetable: pd.DataFrame, dmatrix: pd.DataFrame,
             if arrive > dep:                              # not on time
                 continue
             wait = dep - arrive
-            used = mat_kwh + (cfg.waiting_cost_kwh if wait > 0 else 0.0) + trip_kwh
+            used = mat_kwh + (cfg.idle_power_kw * wait / 60 if wait > 0 else 0.0) + trip_kwh
             soc_after = bus.soc_kwh - used
             # after the trip there must still be enough energy to reach the garage
             if soc_after - return_energy(e) < cfg.min_soc_kwh - margin:
@@ -628,8 +621,9 @@ def generate_bus_planning(timetable: pd.DataFrame, dmatrix: pd.DataFrame,
                 bus.free_min += mat_min
                 bus.location = s
             if dep > bus.free_min:
-                add_row(bus.number, s, s, bus.free_min, dep, "idle", np.nan, cfg.waiting_cost_kwh)
-                bus.soc_kwh -= cfg.waiting_cost_kwh
+                idle_kwh = cfg.idle_power_kw * (dep - bus.free_min) / 60
+                add_row(bus.number, s, s, bus.free_min, dep, "idle", np.nan, idle_kwh)
+                bus.soc_kwh -= idle_kwh
         else:
             # ---- Step 2, option 3: take a new bus out of the garage ------------
             mat_min, mat_kwh = leg(garage, s)            # garage -> ehvapt directly is allowed
