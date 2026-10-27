@@ -70,26 +70,32 @@ if not (dm_file and tt_file):
 # Uploaded plan takes priority.
 # Otherwise, use the generated plan if one exists.
 # If neither exists, use the empty backup.  
-if bp_file is not None:
-    bp_input = bp_file
-    using_backup = False
-elif "generated_plan" in st.session_state:
-    bp_input = st.session_state["generated_plan"]
-    using_backup = False
-else:
-    bp_input = bp_backup
-    using_backup = True
-
 try:
-    if bp_file is not None:
-        plan_raw = load_bus_planning(bp_file)
-    elif "generated_plan" in st.session_state:
-        plan_raw = st.session_state["generated_plan"]
-    else:
-        plan_raw = load_bus_planning(bp_backup)
-
+    # Load the required inputs first
     dmatrix = load_distance_matrix(dm_file)
     timetable = load_timetable(tt_file)
+
+    # Generate a plan only when the button was clicked
+    if st.session_state.pop("create_plan_requested", False):
+        try:
+            st.session_state["generated_plan"] = generate_bus_planning(
+                timetable, dmatrix, config
+            )
+            st.session_state.pop("planning_error", None)
+        except Exception as e:
+            st.session_state.pop("generated_plan", None)
+            st.session_state["planning_error"] = str(e)
+
+    # Select the active bus plan
+    if bp_file is not None:
+        plan_raw = load_bus_planning(bp_file)
+        using_backup = False
+    elif "generated_plan" in st.session_state:
+        plan_raw = st.session_state["generated_plan"]
+        using_backup = False
+    else:
+        plan_raw = load_bus_planning(bp_backup)
+        using_backup = True
 
 except Exception as e:
     st.error(f"Failed to load input files: {e}")
@@ -243,46 +249,93 @@ with tab_planner:
         "Buses with a low battery go to the garage at ehvbst to charge, and every bus returns to the garage at the end."
     )
 
-    if st.button("Create planning", type="primary"):
-        try:
-            st.session_state["generated_plan"] = generate_bus_planning(timetable, dmatrix, config)
-        except Exception as e:
-            st.session_state.pop("generated_plan", None)
-            st.error(f"Could not create a planning: {e}")
+    # Request generation. The flag is consumed before generation on the next run.
+    if st.button("Create planning", type="primary", key="create_planning"):
+        st.session_state["create_plan_requested"] = True
+        st.rerun()
 
+    # Display any generation error from the previous run.
+    if "planning_error" in st.session_state:
+        st.error(
+            f"Could not create a planning: "
+            f"{st.session_state.pop('planning_error')}"
+        )
+
+    # Show the generated plan if one exists.
     generated = st.session_state.get("generated_plan")
+
     if generated is not None:
         gen_soc = simulate_soc(generated, config)
-        gen_result = run_all_feasibility_checks(gen_soc, dmatrix, shifted_timetable(timetable),
-                                                valid_locations, config)
+
+        gen_result = run_all_feasibility_checks(
+            gen_soc,
+            dmatrix,
+            shifted_timetable(timetable),
+            valid_locations,
+            config,
+        )
+
         gen_kpis = compute_kpis(gen_soc, config)
         gen_errors = len(gen_result.errors)
 
         if gen_errors == 0:
             st.success("The created planning passes all feasibility checks.")
         else:
-            st.error(f"The created planning has {gen_errors} feasibility violation(s).")
-            st.dataframe(gen_result.to_dataframe(), use_container_width=True)
+            st.error(
+                f"The created planning has {gen_errors} feasibility violation(s)."
+            )
+            st.dataframe(
+                gen_result.to_dataframe(),
+                use_container_width=True,
+            )
 
         g1, g2, g3, g4 = st.columns(4)
         g1.metric("Buses used", gen_kpis["n_buses"])
         g2.metric("Deadhead ratio", f"{gen_kpis['deadhead_ratio']:.2f}")
-        g3.metric("Productive time ratio", f"{gen_kpis['productive_time_ratio']:.1%}")
+        g3.metric(
+            "Productive time ratio",
+            f"{gen_kpis['productive_time_ratio']:.1%}",
+        )
         g4.metric("Charging sessions", gen_kpis["n_charging_sessions"])
 
-        st.plotly_chart(build_gantt(gen_soc, title="Created planning - Gantt chart"),
-                        use_container_width=True)
-        st.plotly_chart(build_soc_chart(gen_soc, config), use_container_width=True)
+        st.plotly_chart(
+            build_gantt(gen_soc, title="Created planning - Gantt chart"),
+            use_container_width=True,
+        )
 
-        export_columns = ["start location", "end location", "start time", "end time",
-                          "activity", "line", "energy consumption", "bus"]
+        st.plotly_chart(
+            build_soc_chart(gen_soc, config),
+            use_container_width=True,
+        )
+
+        export_columns = [
+            "start location",
+            "end location",
+            "start time",
+            "end time",
+            "activity",
+            "line",
+            "energy consumption",
+            "bus",
+        ]
+
         export_df = generated[export_columns]
-        st.dataframe(export_df, use_container_width=True, height=400)
+
+        st.dataframe(
+            export_df,
+            use_container_width=True,
+            height=400,
+        )
 
         buffer = io.BytesIO()
         export_df.to_excel(buffer, index=False)
-        st.download_button("Download planning (.xlsx)", buffer.getvalue(),
-                           file_name="Generated_Bus_Planning.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        st.download_button(
+            "Download planning (.xlsx)",
+            buffer.getvalue(),
+            file_name="Generated_Bus_Planning.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_generated_planning",
+        )
 
 st.divider()
