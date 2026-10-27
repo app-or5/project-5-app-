@@ -9,7 +9,9 @@ from typing import Optional
 # Configuration / parameter assumptions (see "Parameter assumptions" block in the
 # KPI and Feasibility Definitions document)
 
-margin = 1e-6 #not 100% sure if it works, not tested!!!!
+margin = 1e-6
+#margin bc python float arithmetic if funny
+# 0.1 + 0.2 = 0.3 + 4e-17
 
 @dataclass
 class Config:
@@ -144,6 +146,11 @@ def load_bus_planning(path: str) -> pd.DataFrame:
     df["duration_min"] = (                                      # calculate the duration of every activity in minutes
         df["end_min_adj"] - df["start_min"]
     )
+    
+    # Shift times before 04:00 into the next calendar day
+    df["start_min"] = df["start_min"].apply(shift_after_midnight)
+    df["end_min_adj"] = df["start_min"] + df["duration_min"]
+
     return (                                                    # Sort bus plan on bus number and as second sorter starttime
         df.sort_values(["bus", "start_min"])
         .reset_index(drop=True)
@@ -606,7 +613,7 @@ def generate_bus_planning(timetable: pd.DataFrame, dmatrix: pd.DataFrame,
             # after the trip there must still be enough energy to reach the garage
             if soc_after - return_energy(e) < cfg.min_soc_kwh - margin:
                 continue
-            # ---- Step 3: option A before B, smallest wait (best fit), then lowest SOC
+            # Step 3: option A before B, smallest wait (best fit), then lowest SOC
             key = (option, wait, bus.soc_kwh)
             if best_key is None or key < best_key:
                 best, best_key = bus, key
@@ -625,7 +632,7 @@ def generate_bus_planning(timetable: pd.DataFrame, dmatrix: pd.DataFrame,
                 add_row(bus.number, s, s, bus.free_min, dep, "idle", np.nan, idle_kwh)
                 bus.soc_kwh -= idle_kwh
         else:
-            # ---- Step 2, option 3: take a new bus out of the garage ------------
+            # Step 2, option 3: take a new bus out of the garage
             mat_min, mat_kwh = leg(garage, s)            # garage -> ehvapt directly is allowed
             bus = _PlannedBus(len(buses) + 1, s, dep, cfg.max_daily_soc_kwh)
             buses.append(bus)
@@ -637,7 +644,7 @@ def generate_bus_planning(timetable: pd.DataFrame, dmatrix: pd.DataFrame,
         bus.free_min = dep + trip_min
         bus.location = e
 
-        # ---- Step 4: battery too low? -> go to the garage (always via ehvbst) and charge ----
+        # Step 4: battery too low? -> go to the garage (always via ehvbst) and charge
         # Checked after every trip (also at ehvapt, otherwise such a bus would be stuck with a low battery).
         if bus.soc_kwh < charge_trigger_kwh:
             drive_min = sum(leg(a, b)[0] for a, b in path_to_garage(bus.location))
@@ -656,7 +663,7 @@ def generate_bus_planning(timetable: pd.DataFrame, dmatrix: pd.DataFrame,
                 bus.free_min = charged_at
                 bus.location = garage                    # available again (option B) once fully charged
 
-    # ---- Step 5: closing - every bus goes back to the garage -----------------
+    # Step 5: closing - every bus goes back to the garage
     for bus in buses:
         for a, b in path_to_garage(bus.location):
             minutes, kwh = leg(a, b)
