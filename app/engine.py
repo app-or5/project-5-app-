@@ -413,7 +413,7 @@ def run_all_feasibility_checks(plan_with_soc: pd.DataFrame, dmatrix: pd.DataFram
     data_quality_result = check_data_quality(plan_with_soc, valid_locations,)                # Check the bus plan for missing, invalid or conflicting data.
     travel_time_result = check_travel_time(plan_with_soc, dmatrix,)                # Check if every service and material trip has enough time to travel between locations
     soc_result = check_soc_feasibility(plan_with_soc, config,)            # Checks if the battery SOC stays between minimum and maximum allowed battery levels
-    coverage_result = check_timetable_coverage(plan_with_soc, timetable,)                # Check if the service trips in the bus plan exactly matches the required trips in the timetable 
+    coverage_result = check_timetable_coverage(plan_with_soc, shifted_timetable(timetable),)                # Check if the service trips in the bus plan exactly matches the required trips in the timetable 
     all_issues = (data_quality_result.issues + travel_time_result.issues + soc_result.issues + coverage_result.issues)         # Combine the issues from all four results into one list
     return ValidationResult(issues=all_issues)                # Create and return one Validationresult containing all errors and warnings found by the checks above
 
