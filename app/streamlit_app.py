@@ -89,30 +89,33 @@ kpis = compute_kpis(plan_soc, config)
 
 # Tabs
 tab_overview, tab_feasibility, tab_gantt, tab_soc, tab_kpi, tab_planner = st.tabs(
-    ["Overview", "Feasibility checks", "Gantt chart", "SOC chart", "KPIs", "Planning maker"]
+    ["Overview", "Feasibility checks", "Gantt chart", "SOC chart", "KPIs", "Create planning"]
 )
 
 with tab_overview:
-    st.subheader("Feasibility summary")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Overall feasible?", "No" if n_errors > 0 else "Yes")
-    col2.metric("Feasibility errors", n_errors)
-    col3.metric("Warnings", n_warnings)
-
-    st.markdown(
-        "This tool checks the uploaded bus plan against the 9 feasibility checks "
-        "and reports the 12 KPIs defined for this project. "
-        "See the Feasibility checks tab for the full list of violations, or the "
-        "KPIs tab for the performance summary."
-    )
-
-    if n_errors > 0:
-        st.error(
-            f"The current plan is **not feasible**: {n_errors} violation(s) were found "
-            "across the 9 feasibility checks. See the Feasibility checks tab for details."
-        )
+    if using_backup:
+        st.info("Upload a bus plan to enable the overview.")
     else:
-        st.success("All 9 feasibility checks pass - no violations found.")
+        st.subheader("Feasibility summary")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Overall feasible?", "No" if n_errors > 0 else "Yes")
+        col2.metric("Feasibility errors", n_errors)
+        col3.metric("Warnings", n_warnings)
+
+        st.markdown(
+            "This tool checks the uploaded bus plan against the 9 feasibility checks "
+            "and reports the 12 KPIs defined for this project. "
+            "See the Feasibility checks tab for the full list of violations, or the "
+            "KPIs tab for the performance summary."
+        )
+
+        if n_errors > 0:
+            st.error(
+                f"The current plan is **not feasible**: {n_errors} violation(s) were found "
+                "across the 9 feasibility checks. See the Feasibility checks tab for details."
+            )
+        else:
+            st.success("All 9 feasibility checks pass - no violations found.")
 
 with tab_feasibility:
     if using_backup:
@@ -150,7 +153,7 @@ with tab_feasibility:
 
 with tab_gantt:
     if using_backup:
-        st.info("Upload a bus plan to enable feasibility checks.")
+        st.info("Upload a bus plan to enable the Ghantt chart.")
     else:
         st.subheader("Bus plan - Gantt chart")
         buses_available = sorted(plan_soc["bus"].unique())
@@ -161,7 +164,7 @@ with tab_gantt:
 
 with tab_soc:
     if using_backup:
-        st.info("Upload a bus plan to enable feasibility checks.")
+        st.info("Upload a bus plan to enable the SOC chart.")
     else:
         st.subheader("State of Charge over the day")
         buses_available = sorted(plan_soc["bus"].unique())
@@ -172,7 +175,7 @@ with tab_soc:
 
 with tab_kpi:
     if using_backup:
-        st.info("Upload a bus plan to enable feasibility checks.")
+        st.info("Upload a bus plan to enable the KPI overview.")
     else:
         st.subheader("Key Performance Indicators")
 
