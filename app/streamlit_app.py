@@ -4,7 +4,7 @@ import io
 import os
 from pathlib import Path
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 bp_backup = DATA_DIR / "bus_plan_empty.xlsx"
 
 
