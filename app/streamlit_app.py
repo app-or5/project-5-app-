@@ -246,7 +246,6 @@ with tab_planner:
     if st.button("Create planning", type="primary"):
         try:
             st.session_state["generated_plan"] = generate_bus_planning(timetable, dmatrix, config)
-            st.rerun() #rerun so when no planning us uploaded use the generated planning.
         except Exception as e:
             st.session_state.pop("generated_plan", None)
             st.error(f"Could not create a planning: {e}")
