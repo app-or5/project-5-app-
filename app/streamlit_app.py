@@ -68,6 +68,7 @@ if not (dm_file and tt_file):
     st.stop()
 
 bp_input = bp_file if bp_file is not None else bp_backup
+using_backup = bp_file is None
 
 try:
     plan_raw = load_bus_planning(bp_input)
@@ -114,91 +115,103 @@ with tab_overview:
         st.success("All 9 feasibility checks pass - no violations found.")
 
 with tab_feasibility:
-    st.subheader("Feasibility checks")
-    st.markdown(
-        "Every requirement below must be met for the plan to be feasible. "
-        "Each row shows which of the 9 checks was violated, on which bus, and why."
-    )
-    if not all_issues_result.issues:
-        st.success("No issues found - all feasibility checks pass.")
+    if using_backup:
+        st.info("Upload a bus plan to enable feasibility checks.")
     else:
-        df_issues = all_issues_result.to_dataframe()
-        check_filter = st.multiselect("Filter by feasibility check",
-                                       sorted(df_issues["check"].unique()),
-                                       default=sorted(df_issues["check"].unique()))
-        sev_filter = st.multiselect("Filter by severity", ["error", "warning"],
-                                     default=["error", "warning"])
-        filtered = df_issues[df_issues["check"].isin(check_filter) &
-                              df_issues["severity"].isin(sev_filter)]
-        st.dataframe(
-            filtered.rename(columns={
-                "severity": "Severity", "category": "Category", "check": "Feasibility check",
-                "bus": "Bus", "row": "Row", "message": "Message",
-            }),
-            use_container_width=True, height=500,
+        st.subheader("Feasibility checks")
+        st.markdown(
+            "Every requirement below must be met for the plan to be feasible. "
+            "Each row shows which of the 9 checks was violated, on which bus, and why."
         )
-        st.caption(f"Showing {len(filtered)} of {len(df_issues)} issues.")
+        if not all_issues_result.issues:
+            st.success("No issues found - all feasibility checks pass.")
+        else:
+            df_issues = all_issues_result.to_dataframe()
+            check_filter = st.multiselect("Filter by feasibility check",
+                                        sorted(df_issues["check"].unique()),
+                                        default=sorted(df_issues["check"].unique()))
+            sev_filter = st.multiselect("Filter by severity", ["error", "warning"],
+                                        default=["error", "warning"])
+            filtered = df_issues[df_issues["check"].isin(check_filter) &
+                                df_issues["severity"].isin(sev_filter)]
+            st.dataframe(
+                filtered.rename(columns={
+                    "severity": "Severity", "category": "Category", "check": "Feasibility check",
+                    "bus": "Bus", "row": "Row", "message": "Message",
+                }),
+                use_container_width=True, height=500,
+            )
+            st.caption(f"Showing {len(filtered)} of {len(df_issues)} issues.")
 
-        st.markdown("**Summary per feasibility check**")
-        summary = df_issues.groupby("check").size().reset_index(name="Violations")
-        summary = summary.rename(columns={"check": "Feasibility check"})
-        st.dataframe(summary, use_container_width=True)
+            st.markdown("**Summary per feasibility check**")
+            summary = df_issues.groupby("check").size().reset_index(name="Violations")
+            summary = summary.rename(columns={"check": "Feasibility check"})
+            st.dataframe(summary, use_container_width=True)
 
 with tab_gantt:
-    st.subheader("Bus plan - Gantt chart")
-    buses_available = sorted(plan_soc["bus"].unique())
-    selected_buses = st.multiselect("Filter buses (empty = show all)", buses_available)
-    plot_data = plan_soc[plan_soc["bus"].isin(selected_buses)] if selected_buses else plan_soc
-    fig = build_gantt(plot_data)
-    st.plotly_chart(fig, use_container_width=True)
+    if using_backup:
+        st.info("Upload a bus plan to enable feasibility checks.")
+    else:
+        st.subheader("Bus plan - Gantt chart")
+        buses_available = sorted(plan_soc["bus"].unique())
+        selected_buses = st.multiselect("Filter buses (empty = show all)", buses_available)
+        plot_data = plan_soc[plan_soc["bus"].isin(selected_buses)] if selected_buses else plan_soc
+        fig = build_gantt(plot_data)
+        st.plotly_chart(fig, use_container_width=True)
 
 with tab_soc:
-    st.subheader("State of Charge over the day")
-    buses_available = sorted(plan_soc["bus"].unique())
-    selected_buses_soc = st.multiselect("Filter buses (empty = show all)", buses_available,
-                                         key="soc_filter")
-    fig2 = build_soc_chart(plan_soc, config, bus_filter=selected_buses_soc or None)
-    st.plotly_chart(fig2, use_container_width=True)
+    if using_backup:
+        st.info("Upload a bus plan to enable feasibility checks.")
+    else:
+        st.subheader("State of Charge over the day")
+        buses_available = sorted(plan_soc["bus"].unique())
+        selected_buses_soc = st.multiselect("Filter buses (empty = show all)", buses_available,
+                                            key="soc_filter")
+        fig2 = build_soc_chart(plan_soc, config, bus_filter=selected_buses_soc or None)
+        st.plotly_chart(fig2, use_container_width=True)
 
 with tab_kpi:
-    st.subheader("Key Performance Indicators")
+    if using_backup:
+        st.info("Upload a bus plan to enable feasibility checks.")
+    else:
+        st.subheader("Key Performance Indicators")
 
-    st.markdown("**Importend KPI's**")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("1. Number of buses used", kpis["n_buses"])
-    c2.metric("2. Deadhead ratio", f"{kpis['deadhead_ratio']:.2f}")
-    c3.metric("3. Productive time ratio", f"{kpis['productive_time_ratio']:.1%}")
-    c4, c5, c6 = st.columns(3)
-    c4.metric("4. Total service hours", f"{kpis['total_service_hours']:.1f} h")
-    c5.metric("5. Total idle hours", f"{kpis['total_idle_hours']:.1f} h")
-    c6.metric("6. Buses breaching safety margin", kpis["buses_below_margin"])
+        st.markdown("**Importend KPI's**")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("1. Number of buses used", kpis["n_buses"])
+        c2.metric("2. Deadhead ratio", f"{kpis['deadhead_ratio']:.2f}")
+        c3.metric("3. Productive time ratio", f"{kpis['productive_time_ratio']:.1%}")
+        c4, c5, c6 = st.columns(3)
+        c4.metric("4. Total service hours", f"{kpis['total_service_hours']:.1f} h")
+        c5.metric("5. Total idle hours", f"{kpis['total_idle_hours']:.1f} h")
+        c6.metric("6. Buses breaching safety margin", kpis["buses_below_margin"])
 
-    st.markdown("**Less importend KPI's**")
-    c7, c8, c9 = st.columns(3)
-    kleine_kpi(c7, "7. Number of service trips", kpis["n_service_trips"])
-    kleine_kpi(c8, "8. Number of material trips", kpis["n_material_trips"])
-    kleine_kpi(c9, "9. Number of charging sessions", kpis["n_charging_sessions"])
-    c10, c11, c12 = st.columns(3)
-    kleine_kpi(c10, "10. Total material hours", f"{kpis['total_material_hours']:.1f} h")
-    kleine_kpi(c11, "11. Total charging hours", f"{kpis['total_charging_hours']:.1f} h")
-    kleine_kpi(c12, "12. Lowest SOC reached", f"{kpis['min_soc_kwh_overall']:.1f} kWh")
-    
-    st.markdown("**KPI definitions**")
-    st.markdown(
-        "1. **Number of buses used** - minimize bussen used\n"
-        "2. **Deadhead ratio** - material-trip hours ÷ service-trip hours (minimize)\n"
-        "3. **Productive time ratio** - service-trip hours ÷ total scheduled hours (maximize)\n"
-        "4. **Total service hours** - maximize service hours\n"
-        "5. **Total idle hours** - minimize idle hours\n"
-        "6. **Number of buses breaching the safety margin** - minimize buses breached SOC safety margin (target: 0)\n"
-        "7. **Number of service trips** - maximize amount of service trips\n"
-        "8. **Number of material trips** - minimize amount of material trips\n"
-        "9. **Number of charging sessions** - minimize amount of charging secions\n"
-        "10. **Total material hours** - minimize material hours\n"
-        "11. **Total charging hours** - minimize charging hours\n"
-        "12. **Lowest SOC reached** - minimize SOC across all buses and routes\n"
+        st.markdown("**Less importend KPI's**")
+        c7, c8, c9 = st.columns(3)
+        kleine_kpi(c7, "7. Number of service trips", kpis["n_service_trips"])
+        kleine_kpi(c8, "8. Number of material trips", kpis["n_material_trips"])
+        kleine_kpi(c9, "9. Number of charging sessions", kpis["n_charging_sessions"])
+        c10, c11, c12 = st.columns(3)
+        kleine_kpi(c10, "10. Total material hours", f"{kpis['total_material_hours']:.1f} h")
+        kleine_kpi(c11, "11. Total charging hours", f"{kpis['total_charging_hours']:.1f} h")
+        kleine_kpi(c12, "12. Lowest SOC reached", f"{kpis['min_soc_kwh_overall']:.1f} kWh")
+        
+        st.markdown("**KPI definitions**")
+        st.markdown(
+            "1. **Number of buses used** - minimize bussen used\n"
+            "2. **Deadhead ratio** - material-trip hours ÷ service-trip hours (minimize)\n"
+            "3. **Productive time ratio** - service-trip hours ÷ total scheduled hours (maximize)\n"
+            "4. **Total service hours** - maximize service hours\n"
+            "5. **Total idle hours** - minimize idle hours\n"
+            "6. **Number of buses breaching the safety margin** - minimize buses breached SOC safety margin (target: 0)\n"
+            "7. **Number of service trips** - maximize amount of service trips\n"
+            "8. **Number of material trips** - minimize amount of material trips\n"
+            "9. **Number of charging sessions** - minimize amount of charging secions\n"
+            "10. **Total material hours** - minimize material hours\n"
+            "11. **Total charging hours** - minimize charging hours\n"
+            "12. **Lowest SOC reached** - minimize SOC across all buses and routes\n"
 
-    )
+        )
     
 with tab_planner:
     st.subheader("Create Planning")
