@@ -56,7 +56,7 @@ with st.sidebar:
     )
 
 # don't do anything if the files have not been loaded yet.
-if not (bp_file and dm_file and tt_file):
+if not (dm_file and tt_file):
     st.info("Upload the bus plan, distance matrix, and timetable in the sidebar to begin.")
     st.stop()
 
