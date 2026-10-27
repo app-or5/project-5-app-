@@ -67,13 +67,30 @@ if not (dm_file and tt_file):
     st.info("Upload the distance matrix and timetable in the sidebar to begin.")
     st.stop()
 
-bp_input = bp_file if bp_file is not None else bp_backup
-using_backup = bp_file is None
+# Uploaded plan takes priority.
+# Otherwise, use the generated plan if one exists.
+# If neither exists, use the empty backup.  
+if bp_file is not None:
+    bp_input = bp_file
+    using_backup = False
+elif "generated_plan" in st.session_state:
+    bp_input = st.session_state["generated_plan"]
+    using_backup = False
+else:
+    bp_input = bp_backup
+    using_backup = True
 
 try:
-    plan_raw = load_bus_planning(bp_input)
+    if bp_file is not None:
+        plan_raw = load_bus_planning(bp_file)
+    elif "generated_plan" in st.session_state:
+        plan_raw = st.session_state["generated_plan"]
+    else:
+        plan_raw = load_bus_planning(bp_backup)
+
     dmatrix = load_distance_matrix(dm_file)
     timetable = load_timetable(tt_file)
+
 except Exception as e:
     st.error(f"Failed to load input files: {e}")
     st.stop()
@@ -229,6 +246,7 @@ with tab_planner:
     if st.button("Create planning", type="primary"):
         try:
             st.session_state["generated_plan"] = generate_bus_planning(timetable, dmatrix, config)
+            st.rerun() #rerun so when no planning us uploaded use the generated planning.
         except Exception as e:
             st.session_state.pop("generated_plan", None)
             st.error(f"Could not create a planning: {e}")
