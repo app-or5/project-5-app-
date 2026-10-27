@@ -2,6 +2,11 @@ import streamlit as st
 import pandas as pd
 import io
 import os
+from pathlib import Path
+
+DATA_DIR = Path(__file__).parent / "data"
+bp_backup = DATA_DIR / "bus_plan_empty.xlsx"
+
 
 from engine import (
     load_bus_planning, load_distance_matrix, load_timetable,
@@ -55,13 +60,17 @@ with st.sidebar:
         f"Max daily charge level: **{config.max_daily_soc_kwh:.1f} kWh**"
     )
 
+
+
 # don't do anything if the files have not been loaded yet.
 if not (dm_file and tt_file):
-    st.info("Upload the bus plan, distance matrix, and timetable in the sidebar to begin.")
+    st.info("Upload the distance matrix and timetable in the sidebar to begin.")
     st.stop()
 
+bp_input = bp_file if bp_file is not None else bp_backup
+
 try:
-    plan_raw = load_bus_planning(bp_file)
+    plan_raw = load_bus_planning(bp_input)
     dmatrix = load_distance_matrix(dm_file)
     timetable = load_timetable(tt_file)
 except Exception as e:
